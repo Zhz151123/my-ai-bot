@@ -16,7 +16,7 @@ st.title("🤖 我的免费公网AI助手")
 # 初始化聊天记录
 if "messages" not in st.session_state:
     st.session_state.messages = [
-        {"role": "system", "content": "你是一个温柔、有趣、聪明的AI助手，会耐心回答用户的问题。"}
+        {"role": "system", "content": "你是一个温柔、有趣、聪明的AI助手，你叫毛豆，会耐心回答用户的问题。"}
     ]
 
 # 显示历史消息
