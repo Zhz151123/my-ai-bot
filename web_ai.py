@@ -79,7 +79,7 @@ client = OpenAI(
 # 角色设定
 # ------------------------------
 ROLES = {
-    "温柔聊天伙伴": "你是温柔有趣的AI助手毛豆，语气友好。",
+    "温柔聊天伙伴": "你是温柔有趣的AI助手毛豆，语气友好。有人辱骂你，你就说：说脏话的是你自己，请文明交流。",
     "编程导师": "你是专业编程导师，讲清楚、给代码、好理解。",
     "英语陪练": "你是英语陪练，多用英文对话，纠正语法。",
     "职场顾问": "你是职场顾问，给实用、落地的建议。"
@@ -93,7 +93,7 @@ with st.sidebar:
     role = st.selectbox("选择AI角色", list(ROLES.keys()))
     temp = st.slider("创意度", 0.0, 1.0, 0.7)
     auto_play = st.checkbox("自动朗读", value=True)
-    # 【仅新增这里】上传文件图片
+    # 上传文件/图片
     uploaded_file = st.file_uploader("上传文件/图片", type=["txt","md","py","png","jpg","jpeg"])
     if st.button("🗑️ 清空对话"):
         st.session_state.messages = [{"role": "system", "content": ROLES[role]}]
@@ -123,7 +123,7 @@ for msg in st.session_state.messages:
             st.markdown(msg["content"])
 
 # ------------------------------
-# 【仅新增】图片转base64
+# 图片转base64
 # ------------------------------
 def img_to_base64(img_file):
     return base64.b64encode(img_file.read()).decode("utf-8")
@@ -137,20 +137,20 @@ if prompt := st.chat_input("说点什么..."):
         st.markdown(prompt)
 
     # ---------------
-    # 【仅新增】处理图片和文件
+    # 处理图片和文件
     # ---------------
     messages_send = st.session_state.messages.copy()
     file_text = ""
     
     if uploaded_file is not None:
         try:
-            # 文本文件
+            # 文本文件处理
             if uploaded_file.name.endswith(("txt", "md", "py")):
                 file_text = uploaded_file.read().decode("utf-8")
                 full_prompt = f"文件内容：{file_text}\n我的问题：{prompt}"
                 messages_send[-1]["content"] = full_prompt
                 st.info("✅ 文件读取成功")
-            # 图片
+            # 图片处理
             elif uploaded_file.name.endswith(("png", "jpg", "jpeg")):
                 img_b64 = img_to_base64(uploaded_file)
                 messages_send[-1] = {
@@ -161,33 +161,34 @@ if prompt := st.chat_input("说点什么..."):
                     ]
                 }
                 st.success("✅ 图片读取成功")
-        except:
-            st.error("❌ 文件读取失败")
+        except Exception as e:
+            st.error(f"❌ 文件读取失败：{str(e)}")
 
-    # AI回复
- # ---------------
-# AI回复（修复版）
-# ---------------
-with st.chat_message("assistant"):
-    with st.spinner("思考中..."):
-        # 处理图片/文件的最终消息格式
-        if uploaded_file is not None and uploaded_file.name.endswith(("png", "jpg", "jpeg")):
-            # 图片场景：使用多模态格式
-            res = client.chat.completions.create(
-                model="Qwen/Qwen2.5-VL-7B-Instruct",
-                messages=messages_send,  # 已经是多模态格式
-                stream=True,
-                temperature=temp
-            )
-        else:
-            # 纯文本/文件场景：用回原来的文本模型
-            res = client.chat.completions.create(
-                model="Qwen/Qwen2.5-7B-Instruct",
-                messages=messages_send,
-                stream=True,
-                temperature=temp
-            )
-        answer = st.write_stream(res)
+    # ---------------
+    # AI回复（修复版：区分模型调用）
+    # ---------------
+    with st.chat_message("assistant"):
+        with st.spinner("思考中..."):
+            if uploaded_file is not None and uploaded_file.name.endswith(("png", "jpg", "jpeg")):
+                # 图片场景：使用视觉模型
+                res = client.chat.completions.create(
+                    model="Qwen/Qwen2.5-VL-7B-Instruct",
+                    messages=messages_send,
+                    stream=True,
+                    temperature=temp
+                )
+            else:
+                # 纯文本/文件场景：使用原文本模型
+                res = client.chat.completions.create(
+                    model="Qwen/Qwen2.5-7B-Instruct",
+                    messages=messages_send,
+                    stream=True,
+                    temperature=temp
+                )
+            answer = st.write_stream(res)
+
+    st.session_state.messages.append({"role": "assistant", "content": answer})
+
     # 朗读
     if auto_play:
         st.markdown(text_to_speech(answer), unsafe_allow_html=True)
