@@ -3,7 +3,9 @@ import streamlit as st
 import time
 import base64
 from io import BytesIO
-import edge_tts  # 微软语音，更接近豆包音色
+import edge_tts
+import tempfile
+import os
 
 # --- 1. 页面基础配置 ---
 st.set_page_config(
@@ -69,20 +71,26 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# --- 3. 豆包同款语音生成函数 ---
-async def text_to_speech(text, voice="zh-CN-XiaoxiaoNeural", rate="+0%"):
+# --- 3. 同步版豆包同款语音生成函数 ---
+def text_to_speech(text, voice="zh-CN-XiaoxiaoNeural", rate="+0%"):
     """
-    生成豆包风格温柔女声：
+    同步生成语音，避免async报错
     - voice: zh-CN-XiaoxiaoNeural（微软晓晓，温柔女声，最接近豆包）
     - rate: 语速，+0% 为标准语速（和豆包一致）
     """
+    with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as temp_file:
+        temp_path = temp_file.name
+    
+    # 同步生成语音并保存到临时文件
     communicate = edge_tts.Communicate(text, voice=voice, rate=rate)
-    audio_bytes = BytesIO()
-    async for chunk in communicate:
-        if chunk:
-            audio_bytes.write(chunk)
-    audio_bytes.seek(0)
-    b64 = base64.b64encode(audio_bytes.read()).decode()
+    communicate.save_sync(temp_path)
+    
+    # 读取文件并转base64
+    with open(temp_path, "rb") as f:
+        audio_bytes = f.read()
+    os.unlink(temp_path)  # 删除临时文件
+    
+    b64 = base64.b64encode(audio_bytes).decode()
     audio_html = f"""
     <audio controls autoplay>
         <source src="data:audio/mp3;base64,{b64}" type="audio/mp3">
@@ -127,20 +135,15 @@ if "messages" not in st.session_state:
     st.session_state.messages = [
         {
             "role": "system",
-            "content": "你是一个温柔、有趣、超聪明的AI助手，名字叫毛豆，会耐心回答用户的问题，语气友好，像豆包一样温柔。"
+            "content": "你是一个温柔、有趣、聪明的AI助手，名字叫毛豆，会耐心回答用户的问题，语气友好，像豆包一样温柔。"
         }
     ]
 
-# --- 8. 显示历史聊天消息（带极简语音控件） ---
-for i, msg in enumerate(st.session_state.messages):
+# --- 8. 显示历史聊天消息 ---
+for msg in st.session_state.messages:
     if msg["role"] != "system":
         with st.chat_message(msg["role"], avatar="🧑‍💻" if msg["role"] == "user" else "🤖"):
             st.markdown(msg["content"])
-            # 只给AI的回复添加语音播放
-            if msg["role"] == "assistant" and f"playing_{i}" in st.session_state:
-                import asyncio
-                audio_html = asyncio.run(text_to_speech(msg["content"]))
-                st.markdown(audio_html, unsafe_allow_html=True)
 
 # --- 9. 底部输入框 & 流式输出 ---
 if user_input := st.chat_input("想聊点什么？"):
@@ -164,8 +167,7 @@ if user_input := st.chat_input("想聊点什么？"):
             
             # 如果开启自动朗读，就播放语音
             if auto_read:
-                import asyncio
-                audio_html = asyncio.run(text_to_speech(full_response))
+                audio_html = text_to_speech(full_response)
                 st.markdown(audio_html, unsafe_allow_html=True)
                 
         except Exception as e:
