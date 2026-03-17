@@ -3,7 +3,7 @@ import streamlit as st
 import time
 import base64
 from io import BytesIO
-from gtts import gTTS  # 文本转语音库
+import edge_tts  # 微软语音，更接近豆包音色
 
 # --- 1. 页面基础配置 ---
 st.set_page_config(
@@ -56,29 +56,33 @@ st.markdown("""
     .stMarkdown {
         color: #262626;
     }
-    /* 朗读按钮样式 */
-    .stButton > button {
-        border-radius: 20px;
-        background-color: #f0f2f6;
-        border: none;
-        padding: 5px 12px;
-        font-size: 14px;
+    /* 隐藏音频时间进度条 */
+    audio::-webkit-media-controls-timeline,
+    audio::-webkit-media-controls-current-time-display,
+    audio::-webkit-media-controls-time-remaining-display {
+        display: none !important;
     }
-    .stButton > button:hover {
-        background-color: #e6e8eb;
+    /* 只保留播放/暂停和关闭按钮 */
+    audio::-webkit-media-controls-panel {
+        justify-content: center;
     }
     </style>
 """, unsafe_allow_html=True)
 
-# --- 3. 文本转语音函数 ---
-def text_to_speech(text, lang='zh-CN'):
-    """将文本转换为语音并返回可播放的HTML音频"""
-    tts = gTTS(text=text, lang=lang, slow=False)
-    fp = BytesIO()
-    tts.write_to_fp(fp)
-    fp.seek(0)
-    # 转换为base64以便在网页中播放
-    b64 = base64.b64encode(fp.read()).decode()
+# --- 3. 豆包同款语音生成函数 ---
+async def text_to_speech(text, voice="zh-CN-XiaoxiaoNeural", rate="+0%"):
+    """
+    生成豆包风格温柔女声：
+    - voice: zh-CN-XiaoxiaoNeural（微软晓晓，温柔女声，最接近豆包）
+    - rate: 语速，+0% 为标准语速（和豆包一致）
+    """
+    communicate = edge_tts.Communicate(text, voice=voice, rate=rate)
+    audio_bytes = BytesIO()
+    async for chunk in communicate:
+        if chunk:
+            audio_bytes.write(chunk)
+    audio_bytes.seek(0)
+    b64 = base64.b64encode(audio_bytes.read()).decode()
     audio_html = f"""
     <audio controls autoplay>
         <source src="data:audio/mp3;base64,{b64}" type="audio/mp3">
@@ -123,21 +127,20 @@ if "messages" not in st.session_state:
     st.session_state.messages = [
         {
             "role": "system",
-            "content": "你是一个温柔、有趣、聪明的AI助手，会耐心回答用户的问题，语气友好，你的名字是毛豆。"
+            "content": "你是一个温柔、有趣、超聪明的AI助手，名字叫毛豆，会耐心回答用户的问题，语气友好，像豆包一样温柔。"
         }
     ]
 
-# --- 8. 显示历史聊天消息（带朗读按钮） ---
+# --- 8. 显示历史聊天消息（带极简语音控件） ---
 for i, msg in enumerate(st.session_state.messages):
     if msg["role"] != "system":
         with st.chat_message(msg["role"], avatar="🧑‍💻" if msg["role"] == "user" else "🤖"):
             st.markdown(msg["content"])
-            # 只给AI的回复添加朗读按钮
-            if msg["role"] == "assistant":
-                col1, col2 = st.columns([1, 5])
-                with col1:
-                    if st.button("🔊 朗读", key=f"read_{i}"):
-                        st.markdown(text_to_speech(msg["content"]), unsafe_allow_html=True)
+            # 只给AI的回复添加语音播放
+            if msg["role"] == "assistant" and f"playing_{i}" in st.session_state:
+                import asyncio
+                audio_html = asyncio.run(text_to_speech(msg["content"]))
+                st.markdown(audio_html, unsafe_allow_html=True)
 
 # --- 9. 底部输入框 & 流式输出 ---
 if user_input := st.chat_input("想聊点什么？"):
@@ -161,7 +164,9 @@ if user_input := st.chat_input("想聊点什么？"):
             
             # 如果开启自动朗读，就播放语音
             if auto_read:
-                st.markdown(text_to_speech(full_response), unsafe_allow_html=True)
+                import asyncio
+                audio_html = asyncio.run(text_to_speech(full_response))
+                st.markdown(audio_html, unsafe_allow_html=True)
                 
         except Exception as e:
             st.error(f"😱 出错啦！错误信息：{str(e)[:100]}")
