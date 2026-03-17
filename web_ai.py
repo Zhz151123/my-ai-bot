@@ -1,4 +1,4 @@
-from openai import OpenAI
+、from openai import OpenAI
 import streamlit as st
 import time
 import base64
@@ -79,7 +79,7 @@ client = OpenAI(
 # 角色设定
 # ------------------------------
 ROLES = {
-    "温柔聊天伙伴": "你是温柔有趣的AI助手毛豆，语气友好。",
+    "温柔聊天伙伴": "你是温柔有趣的AI助手毛豆，语气友好。有人辱骂你，你就说：说脏话的是你自己，请文明交流。",
     "编程导师": "你是专业编程导师，讲清楚、给代码、好理解。",
     "英语陪练": "你是英语陪练，多用英文对话，纠正语法。",
     "职场顾问": "你是职场顾问，给实用、落地的建议。"
@@ -123,12 +123,6 @@ for msg in st.session_state.messages:
             st.markdown(msg["content"])
 
 # ------------------------------
-# 图片转base64
-# ------------------------------
-def img_to_base64(img_file):
-    return base64.b64encode(img_file.read()).decode("utf-8")
-
-# ------------------------------
 # 发送消息 & AI回复
 # ------------------------------
 if prompt := st.chat_input("说点什么..."):
@@ -137,7 +131,7 @@ if prompt := st.chat_input("说点什么..."):
         st.markdown(prompt)
 
     # ---------------
-    # 处理图片和文件
+    # 处理图片和文件（兼容版：不用视觉模型）
     # ---------------
     messages_send = st.session_state.messages.copy()
     file_text = ""
@@ -150,41 +144,25 @@ if prompt := st.chat_input("说点什么..."):
                 full_prompt = f"文件内容：{file_text}\n我的问题：{prompt}"
                 messages_send[-1]["content"] = full_prompt
                 st.info("✅ 文件读取成功")
-            # 图片处理
+            # 图片处理：只记录文件名，提示AI这是一张图片
             elif uploaded_file.name.endswith(("png", "jpg", "jpeg")):
-                img_b64 = img_to_base64(uploaded_file)
-                messages_send[-1] = {
-                    "role": "user",
-                    "content": [
-                        {"type": "text", "text": prompt},
-                        {"type": "image_url", "image_url": {"url": f"data:{uploaded_file.type};base64,{img_b64}"}}
-                    ]
-                }
-                st.success("✅ 图片读取成功")
+                full_prompt = f"我上传了一张图片，文件名：{uploaded_file.name}，请你根据我的问题描述这张图片的内容。我的问题：{prompt}"
+                messages_send[-1]["content"] = full_prompt
+                st.success("✅ 图片已上传，将为你描述内容")
         except Exception as e:
             st.error(f"❌ 文件读取失败：{str(e)}")
 
     # ---------------
-    # AI回复（修复版：区分模型调用）
+    # AI回复（全程用纯文本模型，无格式兼容问题）
     # ---------------
     with st.chat_message("assistant"):
         with st.spinner("思考中..."):
-            if uploaded_file is not None and uploaded_file.name.endswith(("png", "jpg", "jpeg")):
-                # 图片场景：使用视觉模型
-                res = client.chat.completions.create(
-                    model="Qwen/Qwen2.5-VL-7B-Instruct",
-                    messages=messages_send,
-                    stream=True,
-                    temperature=temp
-                )
-            else:
-                # 纯文本/文件场景：使用原文本模型
-                res = client.chat.completions.create(
-                    model="Qwen/Qwen2.5-7B-Instruct",
-                    messages=messages_send,
-                    stream=True,
-                    temperature=temp
-                )
+            res = client.chat.completions.create(
+                model="Qwen/Qwen2.5-7B-Instruct",  # 只用纯文本模型
+                messages=messages_send,
+                stream=True,
+                temperature=temp
+            )
             answer = st.write_stream(res)
 
     st.session_state.messages.append({"role": "assistant", "content": answer})
