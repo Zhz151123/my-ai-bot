@@ -1,8 +1,6 @@
 from openai import OpenAI
 import streamlit as st
-import time
 import base64
-from io import BytesIO
 import edge_tts
 import tempfile
 import os
@@ -11,51 +9,23 @@ import os
 # 页面配置
 # ------------------------------
 st.set_page_config(
-    page_title="我的AI助手",
+    page_title="AI助手",
     page_icon="🤖",
     layout="centered"
 )
 
 # ------------------------------
-# 白色简洁样式
+# 界面样式
 # ------------------------------
 st.markdown("""
 <style>
-.stApp { background-color: #FFFFFF; }
-.stChatMessage {
-    background-color: #F7F9FC;
-    border-radius: 12px;
-    padding: 12px;
-    margin-bottom: 8px;
-    border: 1px solid #E2E8F0;
-}
-[data-testid="stChatMessage"][data-testid="user"] {
-    background-color: #E6F7FF;
-}
-[data-testid="stChatMessage"][data-testid="assistant"] {
-    background-color: #F6FFED;
-}
-.stChatInputContainer {
-    background-color: #FFFFFF;
-    border: 1px solid #D9D9D9;
-    border-radius: 8px;
-}
-.main-title {
-    font-size: 1.8rem;
-    color: #262626;
-    text-align: center;
-    font-weight: 600;
-}
-audio::-webkit-media-controls-timeline,
-audio::-webkit-media-controls-current-time-display,
-audio::-webkit-media-controls-time-remaining-display {
-    display: none !important;
-}
+.stApp { background-color:#FFFFFF; }
+.stChatMessage { border-radius:12px; padding:12px; margin:5px 0; }
 </style>
 """, unsafe_allow_html=True)
 
 # ------------------------------
-# 语音生成
+# 语音朗读
 # ------------------------------
 def text_to_speech(text):
     with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as f:
@@ -65,10 +35,10 @@ def text_to_speech(text):
     with open(tmp_path, "rb") as f:
         b64 = base64.b64encode(f.read()).decode()
     os.unlink(tmp_path)
-    return f"""<audio controls autoplay><source src="data:audio/mp3;base64,{b64}" type="audio/mp3">"""
+    return f"""<audio controls autoplay><source src="data:audio/mp3;base64,{b64}">"""
 
 # ------------------------------
-# 连接AI
+# AI连接
 # ------------------------------
 client = OpenAI(
     api_key=st.secrets["SILICONFLOW_API_KEY"],
@@ -79,46 +49,35 @@ client = OpenAI(
 # 角色设定
 # ------------------------------
 ROLES = {
-    "温柔聊天伙伴": "你是温柔有趣的AI助手毛豆，语气友好。",
-    "编程导师": "你是专业编程导师，讲清楚、给代码、好理解。",
-    "英语陪练": "你是英语陪练，多用英文对话，纠正语法。",
-    "职场顾问": "你是职场顾问，给实用、落地的建议。"
+    "温柔助手": "你是温柔有礼貌的AI，文明对话，不骂人，耐心回答",
+    "编程老师": "你是极简编程老师，只给简单代码，讲大白话",
+    "学习助手": "你是学习助手，总结、讲解、答题、简单易懂",
 }
 
 # ------------------------------
 # 侧边栏
 # ------------------------------
 with st.sidebar:
-    st.title("⚙️ 设置")
-    role = st.selectbox("选择AI角色", list(ROLES.keys()))
-    temp = st.slider("创意度", 0.0, 1.0, 0.7)
+    st.title("设置")
+    role = st.selectbox("AI角色", list(ROLES.keys()))
     auto_play = st.checkbox("自动朗读", value=True)
-    # 新增：文件上传
-    uploaded_file = st.file_uploader(
-        "上传文件/图片", 
-        type=["txt", "md", "py", "jpg", "jpeg", "png"]
-    )
-    if st.button("🗑️ 清空对话"):
-        st.session_state.messages = [{"role": "system", "content": ROLES[role]}]
+    uploaded_file = st.file_uploader("上传图片/文件", type=["png","jpg","jpeg","txt","md","py"])
+    if st.button("清空对话"):
+        st.session_state.messages = [{"role":"system","content":ROLES[role]}]
         st.rerun()
 
 # ------------------------------
-# 标题
-# ------------------------------
-st.markdown('<h1 class="main-title">🤖 我的AI助手</h1>', unsafe_allow_html=True)
-
-# ------------------------------
-# 初始化记忆
+# 记忆初始化
 # ------------------------------
 if "messages" not in st.session_state:
-    st.session_state.messages = [{"role": "system", "content": ROLES[role]}]
+    st.session_state.messages = [{"role":"system","content":ROLES[role]}]
 
 if st.session_state.get("last_role") != role:
-    st.session_state.messages = [{"role": "system", "content": ROLES[role]}]
+    st.session_state.messages = [{"role":"system","content":ROLES[role]}]
     st.session_state["last_role"] = role
 
 # ------------------------------
-# 显示聊天记录
+# 展示聊天
 # ------------------------------
 for msg in st.session_state.messages:
     if msg["role"] != "system":
@@ -126,58 +85,52 @@ for msg in st.session_state.messages:
             st.markdown(msg["content"])
 
 # ------------------------------
-# 处理上传的文件
+# 图片转base64（识图核心）
 # ------------------------------
-file_content = ""
-if uploaded_file is not None:
-    try:
-        # 文本类文件
-        if uploaded_file.name.endswith(("txt", "md", "py")):
-            file_content = uploaded_file.read().decode("utf-8")
-            st.info(f"✅ 已读取文件：{uploaded_file.name}")
-        # 图片类文件（这里先存内容，后面可扩展识图）
-        elif uploaded_file.name.endswith(("jpg", "jpeg", "png")):
-            file_content = f"[图片文件] {uploaded_file.name}"
-            st.info(f"✅ 已上传图片：{uploaded_file.name}")
-    except:
-        file_content = "无法读取该文件"
-        st.error("❌ 文件读取失败")
+def img_to_base64(img_file):
+    return base64.b64encode(img_file.read()).decode("utf-8")
 
 # ------------------------------
-# 发送消息 & AI回复
+# 发送消息
 # ------------------------------
-if prompt := st.chat_input("说点什么..."):
-    # 把文件内容拼进用户问题
-    if file_content:
-        full_prompt = f"""
-我上传了文件/图片，内容如下：
-{file_content}
-
-我的问题/需求：{prompt}
-"""
-    else:
-        full_prompt = prompt
-
-    # 存记忆
-    st.session_state.messages.append({"role": "user", "content": full_prompt})
+if prompt := st.chat_input("输入消息"):
+    st.session_state.messages.append({"role":"user","content":prompt})
     with st.chat_message("user"):
         st.markdown(prompt)
-        if file_content:
-            st.caption(f"📎 附带文件：{uploaded_file.name}")
 
+    # ---------------
+    # 核心：处理图片
+    # ---------------
+    messages_api = st.session_state.messages.copy()
+    if uploaded_file is not None:
+        file_type = uploaded_file.type
+        # 图片处理
+        if "image" in file_type:
+            img_b64 = img_to_base64(uploaded_file)
+            messages_api[-1] = {
+                "role": "user",
+                "content": [
+                    {"type":"text","text":prompt},
+                    {"type":"image_url","image_url":{"url":f"data:{file_type};base64,{img_b64}"}}
+                ]
+            }
+            st.success("📷 图片读取成功")
+
+    # ---------------
     # AI回复
+    # ---------------
     with st.chat_message("assistant"):
-        with st.spinner("思考中..."):
+        with st.spinner("思考中"):
             res = client.chat.completions.create(
-                model="Qwen/Qwen2.5-7B-Instruct",
-                messages=st.session_state.messages,
+                model="Qwen/Qwen2.5-VL-7B-Instruct",
+                messages=messages_api,
                 stream=True,
-                temperature=temp
+                temperature=0.6
             )
-            answer = st.write_stream(res)
+            ans = st.write_stream(res)
 
-    st.session_state.messages.append({"role": "assistant", "content": answer})
+    st.session_state.messages.append({"role":"assistant","content":ans})
 
     # 朗读
     if auto_play:
-        st.markdown(text_to_speech(answer), unsafe_allow_html=True)
+        st.markdown(text_to_speech(ans), unsafe_allow_html=True)
