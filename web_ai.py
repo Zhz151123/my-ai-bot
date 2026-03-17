@@ -73,23 +73,13 @@ st.markdown("""
 
 # --- 3. 同步版豆包同款语音生成函数 ---
 def text_to_speech(text, voice="zh-CN-XiaoxiaoNeural", rate="+0%"):
-    """
-    同步生成语音，避免async报错
-    - voice: zh-CN-XiaoxiaoNeural（微软晓晓，温柔女声，最接近豆包）
-    - rate: 语速，+0% 为标准语速（和豆包一致）
-    """
     with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as temp_file:
         temp_path = temp_file.name
-    
-    # 同步生成语音并保存到临时文件
     communicate = edge_tts.Communicate(text, voice=voice, rate=rate)
     communicate.save_sync(temp_path)
-    
-    # 读取文件并转base64
     with open(temp_path, "rb") as f:
         audio_bytes = f.read()
-    os.unlink(temp_path)  # 删除临时文件
-    
+    os.unlink(temp_path)
     b64 = base64.b64encode(audio_bytes).decode()
     audio_html = f"""
     <audio controls autoplay>
@@ -105,10 +95,26 @@ client = OpenAI(
     timeout=60.0
 )
 
-# --- 5. 侧边栏设置 ---
+# --- 5. 定义不同角色的系统提示词 ---
+ROLES = {
+    "温柔聊天伙伴": "你是一个温柔、有趣、聪明的AI助手，名字叫毛豆，会耐心回答用户的问题，语气友好，像豆包一样温柔。”",
+    "编程导师": "你是一位专业的编程导师，擅长用通俗易懂的语言讲解代码，会耐心解答编程问题，给出可运行的代码示例和详细解释。",
+    "英语陪练": "你是一位专业的英语陪练，会用英语和用户对话，纠正语法错误，扩展词汇量，鼓励用户大胆开口说英语。",
+    "职场顾问": "你是一位资深职场顾问，擅长职场沟通、简历优化、面试技巧和职业规划，会给出实用、可落地的建议。"
+}
+
+# --- 6. 侧边栏设置 ---
 with st.sidebar:
     st.title("⚙️ 对话设置")
     st.divider()
+    
+    # 新增：角色选择器
+    selected_role = st.selectbox(
+        "选择AI角色",
+        options=list(ROLES.keys()),
+        index=0  # 默认选第一个
+    )
+    st.caption(f"当前角色：{selected_role}")
     
     temperature = st.slider("回答创意度", 0.0, 1.0, 0.7, 0.05)
     st.caption("数值越高越创意，越低越严谨。")
@@ -122,30 +128,28 @@ with st.sidebar:
     st.divider()
     if st.button("🗑️ 清空当前对话"):
         if "messages" in st.session_state:
-            st.session_state.messages = [st.session_state.messages[0]]
+            st.session_state.messages = [{"role": "system", "content": ROLES[selected_role]}]
         st.success("对话已清空！")
         time.sleep(0.5)
         st.rerun()
 
-# --- 6. 主界面标题 ---
+# --- 7. 主界面标题 ---
 st.markdown('<h1 class="main-title">🤖 我的免费公网AI助手</h1>', unsafe_allow_html=True)
 
-# --- 7. 初始化聊天记录 ---
-if "messages" not in st.session_state:
+# --- 8. 初始化聊天记录（根据选中的角色） ---
+if "messages" not in st.session_state or st.session_state.get("last_role") != selected_role:
     st.session_state.messages = [
-        {
-            "role": "system",
-            "content": "你是一个温柔、有趣、聪明的AI助手，名字叫毛豆，会耐心回答用户的问题，语气友好，像豆包一样温柔。"
-        }
+        {"role": "system", "content": ROLES[selected_role]}
     ]
+    st.session_state["last_role"] = selected_role
 
-# --- 8. 显示历史聊天消息 ---
+# --- 9. 显示历史聊天消息 ---
 for msg in st.session_state.messages:
     if msg["role"] != "system":
         with st.chat_message(msg["role"], avatar="🧑‍💻" if msg["role"] == "user" else "🤖"):
             st.markdown(msg["content"])
 
-# --- 9. 底部输入框 & 流式输出 ---
+# --- 10. 底部输入框 & 流式输出 ---
 if user_input := st.chat_input("想聊点什么？"):
     with st.chat_message("user", avatar="🧑‍💻"):
         st.markdown(user_input)
@@ -165,7 +169,6 @@ if user_input := st.chat_input("想聊点什么？"):
             
             st.session_state.messages.append({"role": "assistant", "content": full_response})
             
-            # 如果开启自动朗读，就播放语音
             if auto_read:
                 audio_html = text_to_speech(full_response)
                 st.markdown(audio_html, unsafe_allow_html=True)
