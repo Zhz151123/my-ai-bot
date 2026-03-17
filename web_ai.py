@@ -55,7 +55,7 @@ audio::-webkit-media-controls-time-remaining-display {
 """, unsafe_allow_html=True)
 
 # ------------------------------
-# 语音生成（豆包同款女声）
+# 语音生成
 # ------------------------------
 def text_to_speech(text):
     with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as f:
@@ -76,23 +76,28 @@ client = OpenAI(
 )
 
 # ------------------------------
-# 角色设定（你可以自己加）
+# 角色设定
 # ------------------------------
 ROLES = {
-    "温柔聊天伙伴": "你是温柔有趣的AI助手毛豆，语气友好。有人辱骂你，你就说：说脏话的是你自己，请文明交流。",
+    "温柔聊天伙伴": "你是温柔有趣的AI助手毛豆，语气友好。",
     "编程导师": "你是专业编程导师，讲清楚、给代码、好理解。",
     "英语陪练": "你是英语陪练，多用英文对话，纠正语法。",
     "职场顾问": "你是职场顾问，给实用、落地的建议。"
 }
 
 # ------------------------------
-# 侧边栏设置
+# 侧边栏
 # ------------------------------
 with st.sidebar:
     st.title("⚙️ 设置")
     role = st.selectbox("选择AI角色", list(ROLES.keys()))
     temp = st.slider("创意度", 0.0, 1.0, 0.7)
     auto_play = st.checkbox("自动朗读", value=True)
+    # 新增：文件上传
+    uploaded_file = st.file_uploader(
+        "上传文件/图片", 
+        type=["txt", "md", "py", "jpg", "jpeg", "png"]
+    )
     if st.button("🗑️ 清空对话"):
         st.session_state.messages = [{"role": "system", "content": ROLES[role]}]
         st.rerun()
@@ -103,12 +108,11 @@ with st.sidebar:
 st.markdown('<h1 class="main-title">🤖 我的AI助手</h1>', unsafe_allow_html=True)
 
 # ------------------------------
-# 初始化记忆（关键！）
+# 初始化记忆
 # ------------------------------
 if "messages" not in st.session_state:
     st.session_state.messages = [{"role": "system", "content": ROLES[role]}]
 
-# 切换角色时重置记忆
 if st.session_state.get("last_role") != role:
     st.session_state.messages = [{"role": "system", "content": ROLES[role]}]
     st.session_state["last_role"] = role
@@ -122,27 +126,56 @@ for msg in st.session_state.messages:
             st.markdown(msg["content"])
 
 # ------------------------------
+# 处理上传的文件
+# ------------------------------
+file_content = ""
+if uploaded_file is not None:
+    try:
+        # 文本类文件
+        if uploaded_file.name.endswith(("txt", "md", "py")):
+            file_content = uploaded_file.read().decode("utf-8")
+            st.info(f"✅ 已读取文件：{uploaded_file.name}")
+        # 图片类文件（这里先存内容，后面可扩展识图）
+        elif uploaded_file.name.endswith(("jpg", "jpeg", "png")):
+            file_content = f"[图片文件] {uploaded_file.name}"
+            st.info(f"✅ 已上传图片：{uploaded_file.name}")
+    except:
+        file_content = "无法读取该文件"
+        st.error("❌ 文件读取失败")
+
+# ------------------------------
 # 发送消息 & AI回复
 # ------------------------------
 if prompt := st.chat_input("说点什么..."):
+    # 把文件内容拼进用户问题
+    if file_content:
+        full_prompt = f"""
+我上传了文件/图片，内容如下：
+{file_content}
 
-    # 把用户说的话存进记忆
-    st.session_state.messages.append({"role": "user", "content": prompt})
+我的问题/需求：{prompt}
+"""
+    else:
+        full_prompt = prompt
+
+    # 存记忆
+    st.session_state.messages.append({"role": "user", "content": full_prompt})
     with st.chat_message("user"):
         st.markdown(prompt)
+        if file_content:
+            st.caption(f"📎 附带文件：{uploaded_file.name}")
 
     # AI回复
     with st.chat_message("assistant"):
         with st.spinner("思考中..."):
             res = client.chat.completions.create(
                 model="Qwen/Qwen2.5-7B-Instruct",
-                messages=st.session_state.messages,  # 把全部记忆发给AI
+                messages=st.session_state.messages,
                 stream=True,
                 temperature=temp
             )
             answer = st.write_stream(res)
 
-    # 把AI回答也存进记忆
     st.session_state.messages.append({"role": "assistant", "content": answer})
 
     # 朗读
