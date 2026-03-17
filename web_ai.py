@@ -165,18 +165,29 @@ if prompt := st.chat_input("说点什么..."):
             st.error("❌ 文件读取失败")
 
     # AI回复
-    with st.chat_message("assistant"):
-        with st.spinner("思考中..."):
+ # ---------------
+# AI回复（修复版）
+# ---------------
+with st.chat_message("assistant"):
+    with st.spinner("思考中..."):
+        # 处理图片/文件的最终消息格式
+        if uploaded_file is not None and uploaded_file.name.endswith(("png", "jpg", "jpeg")):
+            # 图片场景：使用多模态格式
             res = client.chat.completions.create(
                 model="Qwen/Qwen2.5-VL-7B-Instruct",
+                messages=messages_send,  # 已经是多模态格式
+                stream=True,
+                temperature=temp
+            )
+        else:
+            # 纯文本/文件场景：用回原来的文本模型
+            res = client.chat.completions.create(
+                model="Qwen/Qwen2.5-7B-Instruct",
                 messages=messages_send,
                 stream=True,
                 temperature=temp
             )
-            answer = st.write_stream(res)
-
-    st.session_state.messages.append({"role": "assistant", "content": answer})
-
+        answer = st.write_stream(res)
     # 朗读
     if auto_play:
         st.markdown(text_to_speech(answer), unsafe_allow_html=True)
